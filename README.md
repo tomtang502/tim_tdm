@@ -240,4 +240,4 @@ TIM pipeline end-to-end latency (RTX 5090, 1280px input, ByteTrack): **~10.6 ms/
 
 ## License
 
-MIT. See individual dataset licenses for dataset-specific terms (PIE and JAAD are under MIT; Intersection-Flow-5K under CC BY-NC-SA 4.0; MIO-TCD under CC BY-NC-SA 4.0).
+See individual dataset licenses for dataset-specific terms (PIE and JAAD are under MIT; Intersection-Flow-5K under CC BY-NC-SA 4.0; MIO-TCD under CC BY-NC-SA 4.0).
