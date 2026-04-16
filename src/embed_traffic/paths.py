@@ -24,6 +24,12 @@ SCRIPTS_DIR: Path = REPO_ROOT / "scripts"
 PIE_CODE_DIR: Path = DATASETS_DIR / "PIE"
 JAAD_CODE_DIR: Path = DATASETS_DIR / "JAAD"
 
+# Cache directories for generated .pkl files (kept outside submodules so
+# `git status` inside datasets/ stays clean).
+CACHE_DIR: Path = DATA_DIR / "cache"
+PIE_CACHE_DIR: Path = CACHE_DIR / "pie"
+JAAD_CACHE_DIR: Path = CACHE_DIR / "jaad"
+
 # Downloaded video/image data
 PIE_CLIPS_DIR: Path = DATA_DIR / "PIE_clips"
 JAAD_CLIPS_DIR: Path = DATA_DIR / "JAAD_clips"

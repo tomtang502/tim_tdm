@@ -1,0 +1,13 @@
+diff --git a/utilities/pie_data.py b/utilities/pie_data.py
+index c7892c6..2721b1f 100644
+--- a/utilities/pie_data.py
++++ b/utilities/pie_data.py
+@@ -514,7 +514,7 @@ class PIE(object):
+             return database
+ 
+         # Path to the folder annotations
+-        set_ids = [f for f in sorted(listdir(self._annotation_path))]
++        set_ids = [f for f in sorted(listdir(self._annotation_path)) if isdir(join(self._annotation_path, f))]
+ 
+         # Read the content of set folders
+         database = {}
