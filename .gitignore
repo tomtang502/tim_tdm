@@ -49,6 +49,7 @@ venv/
 .idea/
 *.swp
 .DS_Store
+.claude/
 
 # Jupyter
 .ipynb_checkpoints/
