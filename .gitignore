@@ -29,11 +29,14 @@ dist/
 logs/
 training_progress.log
 
-# Data directories (too big to commit)
-data/
-checkpoints/
-outputs/
-runs/                            # ultralytics default output dir
+# Data directories (too big to commit) — only top-level, not nested package dirs
+/data/
+/checkpoints/
+/outputs/
+/runs/                           # ultralytics default output dir
+/yolo_dataset/
+/yolo_dataset_dashcam/
+/yolo_dataset_traffic_light/
 
 # Dataset cache files (generated pickles inside submodules)
 **/data_cache/
