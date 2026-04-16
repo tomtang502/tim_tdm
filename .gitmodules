@@ -1,0 +1,6 @@
+[submodule "datasets/PIE"]
+	path = datasets/PIE
+	url = https://github.com/aras62/PIE.git
+[submodule "datasets/JAAD"]
+	path = datasets/JAAD
+	url = https://github.com/ykotseruba/JAAD.git
