@@ -69,19 +69,23 @@ def prepare_subset(
     print(f"  Config: {config}")
 
 
-def main(run_name: str, pretrained: str = "yolo26x.pt") -> None:
+def main(run_name: str, pretrained: str = "yolo26x.pt", batch: int | None = None) -> None:
     print(f"=== Preparing dashcam dataset (PIE + JAAD) for run '{run_name}' ===")
     prepare_subset()
 
     dataset_yaml = str((YOLO_DATASET_DASHCAM_DIR / "dataset.yaml").resolve())
+
+    overrides = dict(TRAIN_DEFAULTS)
+    if batch is not None:
+        overrides["batch"] = batch
 
     model = YOLO(pretrained)
     model.train(
         data=dataset_yaml,
         project=str(CHECKPOINTS_DIR),
         name=run_name,
-        device=[0, 1],
-        **TRAIN_DEFAULTS,
+        device=0,
+        **overrides,
         **AUGMENTATION,
         **OPTIMIZER,
     )
@@ -108,8 +112,9 @@ def cli() -> None:
     p = argparse.ArgumentParser(description="Fine-tune YOLO for dashcam view.")
     p.add_argument("--run-name", required=True, help="Checkpoint directory name.")
     p.add_argument("--pretrained", default="yolo26x.pt", help="Pretrained weights.")
+    p.add_argument("--batch", type=int, default=None, help="Global batch size (overrides TRAIN_DEFAULTS).")
     args = p.parse_args()
-    main(args.run_name, args.pretrained)
+    main(args.run_name, args.pretrained, args.batch)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ from embed_traffic.train.dashcam import prepare_subset
 PREFIXES = ("iflow_", "miotcd_")
 
 
-def main(run_name: str, pretrained: str = "yolo26x.pt") -> None:
+def main(run_name: str, pretrained: str = "yolo26x.pt", batch: int | None = None) -> None:
     print(f"=== Preparing traffic-light dataset (IFlow + MIO-TCD) for run '{run_name}' ===")
     prepare_subset(
         src=YOLO_DATASET_DIR,
@@ -36,11 +36,13 @@ def main(run_name: str, pretrained: str = "yolo26x.pt") -> None:
     # Traffic-light dataset is small enough to fully cache in RAM
     overrides = dict(TRAIN_DEFAULTS)
     overrides["cache"] = True
+    if batch is not None:
+        overrides["batch"] = batch
     model.train(
         data=dataset_yaml,
         project=str(CHECKPOINTS_DIR),
         name=run_name,
-        device=[0, 1],
+        device=0,
         **overrides,
         **AUGMENTATION,
         **OPTIMIZER,
@@ -68,8 +70,9 @@ def cli() -> None:
     p = argparse.ArgumentParser(description="Fine-tune YOLO for traffic-light view.")
     p.add_argument("--run-name", required=True, help="Checkpoint directory name.")
     p.add_argument("--pretrained", default="yolo26x.pt", help="Pretrained weights.")
+    p.add_argument("--batch", type=int, default=None, help="Global batch size (overrides TRAIN_DEFAULTS).")
     args = p.parse_args()
-    main(args.run_name, args.pretrained)
+    main(args.run_name, args.pretrained, args.batch)
 
 
 if __name__ == "__main__":

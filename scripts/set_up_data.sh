@@ -77,7 +77,7 @@ PY
         mkdir -p data/PIE_clips
         (cd data && wget -N --recursive --no-parent -nH --cut-dirs=1 \
             -R "index.html*" \
-            https://data.nvision2.eecs.yorku.ca/PIE_dataset/PIE_clips/ .)
+            https://data.nvision2.eecs.yorku.ca/PIE_dataset/PIE_clips/)
     else
         echo "data/PIE_clips already populated; skipping"
     fi
