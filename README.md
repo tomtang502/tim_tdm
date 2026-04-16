@@ -1,4 +1,4 @@
-# embed_traffic
+# TIM/TDM: Cooperative Edge Perception for Intersection Safety
 
 Embedded traffic perception system with two cooperating nodes:
 
