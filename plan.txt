@@ -1,0 +1,158 @@
+# Initial Plan
+
+The goal is to build a 2 node system prototype, inluding traffic light node and driver node, where traffic light node has a camera sensor to collect and processing traffic information
+in the corresponding crossroads, driver node will send request to traffic light node to these information to determine what the driver should do (slow down, stop, no-op).
+
+[I] main idea:
+(1) traffic light compute node (with cam sensor) that use computer vision algorithm to detect pedestrian traffic.
+"Traffic Info Model" (TIM) is used here.
+Input: frame of pictures
+Output: number of pedestrian intended to cross, position of pedestrians, walking speed for each of them, time until next light, next light color (green/red/yellow)
+(2) On driver/bike rider side, they will have an app sending request for information to traffic light compute node, then traffic light will send the infor from (1) to these app on phone.
+(3) app on phone will then determine are they potentially in danger of a hit to the pedestrain and choose to alert driver or not (slow down, stop, no-op).
+"Traffic Decision Model" (TDM) is used here.
+Input: output from traffic light node
+Output: slow down, stop, or no-op
+
+[II] what we need to do:
+(1) build a prototype for the "Traffic Info Model" (TIM) using ml, this should base on YOLOv8, speed and trajectory can be directly computed
+(2) build a prototype for the "Traffic Decision Model" (TDM), this should be a simple linear attention (gated deltanet 2). 
+    (Notice: we might try this later as a baseline, TDM might be a fixed conditioned algorithm based on some predicted trajectory that do not require training)
+
+[III] Dataset:
+(1) For TIM, I'm nor sure which dataset to use, maybe potentially a combination of https://tcd.miovision.com/ and collected data.
+(2) For TDM, I think we use simulation to generate the dataset.
+
+------------------------------------------------------------------------------------------------------------------------
+
+[IV] Dataset Selection:
+
+(A) TIM Datasets:
+  1. PIE (Pedestrian Intention Estimation) — PRIMARY
+     - 6+ hours continuous HD video at 30fps, Toronto
+     - 1,842 pedestrian samples with bounding boxes, tracking IDs, crossing intention labels
+     - Vehicle OBD data (ego speed, heading, GPS) synced with video
+     - Traffic light, crosswalk, and sign annotations
+     - MIT License, free for research
+     - Download: http://data.nvision2.eecs.yorku.ca/PIE_dataset/
+     - Annotations: https://github.com/aras62/PIE
+
+  2. JAAD (Joint Attention in Autonomous Driving) — SECONDARY
+     - 346 video clips (~82K frames), 390K+ pedestrian samples
+     - Bounding boxes with tracking IDs, behavioral labels (crossing, walking, stopped)
+     - Scene tags: weather, location, traffic signals
+     - MIT License, free for research
+     - Download: http://data.nvision2.eecs.yorku.ca/JAAD_dataset/
+     - Annotations: https://github.com/ykotseruba/JAAD
+
+  3. MOT20 — SUPPLEMENTARY (tracker robustness in crowds)
+     - Download: https://motchallenge.net/data/MOT20/
+
+  4. Intersection-Flow-5K — FIXED CAMERA INTERSECTION DATA
+     - 6,928 images from 7 fixed infrastructure cameras at intersections
+     - 23,714 pedestrian instances + vehicles, buses, bicycles (8 classes)
+     - YOLO/VOC/COCO format annotations, 1920x1080
+     - CC BY-NC-SA 4.0, Kaggle download
+     - Download: https://www.kaggle.com/datasets/starsw/intersection-flow-5k
+
+  5. inD Dataset — PENDING ACCESS
+     - Drone-recorded at 4 German intersections, 10h data at 30Hz
+     - Pedestrian + vehicle trajectories with tracking IDs
+     - Apply: https://levelxdata.com/ind-dataset/
+
+  6. WTS Dataset (2024) — PENDING ACCESS
+     - Fixed pole-mounted + vehicle cameras at intersections
+     - 1,200+ video events, COCO bbox annotations
+     - Request: https://forms.gle/szQPk1TMR8JXzm327
+
+  Note: MIO-TCD (tcd.miovision.com) has a pedestrian class but pedestrians are a minority.
+
+  Storage Strategy (total budget: 500 GB):
+    - PIE: keep compressed MP4s only (~74 GB), load frames on-the-fly via OpenCV VideoCapture
+    - JAAD: keep compressed MP4s only (~3 GB), same on-the-fly loading
+    - Intersection-Flow-5K: images (~5.75 GB)
+    - YOLO dataset (extracted frames + labels): ~38 GB
+    - Total storage: ~120 GB (well within 500 GB budget)
+    - No frame extraction needed — YOLOv8 training is GPU-bound, not disk I/O-bound
+
+(B) TDM Datasets:
+  1. Rule-based baseline — NO dataset needed initially (TTC-based algorithm)
+  2. For learned TDM later:
+     - CARLA simulator (open-source, MIT) to generate synthetic vehicle-pedestrian scenarios
+     - Use rule-based TDM as automatic labeling function for simulation data
+     - Validate against PIE/JAAD real-world driver behavior data
+     - inD dataset (drone-recorded intersection trajectories) for additional validation
+
+------------------------------------------------------------------------------------------------------------------------
+
+[V] TIM Build Plan:
+
+Step 1: Environment & Data Setup
+  1.1  Set up conda env with PyTorch 2.9.1, ultralytics (YOLOv8), opencv, etc.
+  1.2  Download PIE dataset (videos + annotations)
+  1.3  Download JAAD dataset (videos + annotations)
+  1.4  Write data loading scripts to parse PIE/JAAD annotations into a unified format
+       (frame_id, ped_id, bbox, crossing_intent, traffic_light_state)
+       Use on-the-fly frame loading from video via OpenCV VideoCapture (no frame extraction)
+
+Step 2: Pedestrian Detection (YOLOv8)
+  2.1  Load pretrained YOLOv8 model (yolov8m or yolov8l) from ultralytics
+  2.2  Evaluate zero-shot performance on PIE/JAAD pedestrian detection
+  2.3  Fine-tune YOLOv8 on PIE+JAAD pedestrian bounding boxes if needed
+  2.4  Evaluate detection metrics: mAP@0.5, mAP@0.5:0.95
+
+Step 3: Pedestrian Tracking
+  3.1  Integrate ByteTrack or BoT-SORT tracker with YOLOv8 detections
+  3.2  Assign consistent pedestrian IDs across frames
+  3.3  Evaluate tracking metrics: MOTA, IDF1 on PIE/JAAD
+
+Step 4: Speed & Trajectory Estimation
+  4.1  From tracked bounding boxes, compute per-pedestrian trajectory (sequence of positions)
+  4.2  Estimate walking speed from bbox displacement + camera calibration (PIE provides this)
+  4.3  Fit simple trajectory prediction (linear extrapolation or Kalman filter)
+  4.4  Validate speed/trajectory estimates against PIE ground truth
+
+Step 5: Crossing Intent Classification
+  5.1  Extract features per pedestrian: bbox sequence, relative position to crosswalk, speed, direction
+  5.2  Train a lightweight classifier (MLP or small LSTM) for crossing intent
+  5.3  Evaluate: accuracy, precision, recall on PIE crossing intention labels
+
+Step 6: TIM Integration
+  6.1  Combine all components into a single TIM pipeline:
+       Input: video frame → Output: {ped_id, bbox, speed, trajectory, crossing_intent, traffic_light_state}
+  6.2  Run end-to-end on PIE test set, measure latency and accuracy
+  6.3  Package as a module with a clean API for the driver node to query
+
+------------------------------------------------------------------------------------------------------------------------
+
+[VI] TDM Build Plan:
+
+Step 1: Rule-Based Baseline
+  1.1  Define decision logic based on Time-To-Collision (TTC):
+       - TTC < 2s → STOP
+       - 2s <= TTC < 5s → SLOW DOWN
+       - TTC >= 5s or no pedestrian in path → NO-OP
+  1.2  Implement TTC computation from vehicle speed + pedestrian trajectory
+  1.3  Test on PIE dataset scenarios (vehicle speed from OBD + pedestrian trajectories)
+  1.4  Evaluate: compare decisions against actual driver behavior in PIE
+
+Step 2: Simulation Data Generation (for learned TDM)
+  2.1  Set up CARLA simulator with intersection scenarios
+  2.2  Script varied scenarios: different vehicle speeds, pedestrian crossing patterns, light states
+  2.3  Record: vehicle_pos, vehicle_speed, ped_positions[], ped_speeds[], ped_trajectories[],
+       traffic_light_state, time_to_light_change
+  2.4  Auto-label each frame using rule-based TDM (Step 1) as ground truth
+
+Step 3: Learned TDM (Gated DeltaNet 2)
+  3.1  Prepare training data: input features (TIM output vector) → label (stop/slow/noop)
+  3.2  Implement gated deltanet-2 architecture (linear attention)
+  3.3  Train on CARLA-generated data
+  3.4  Evaluate on held-out simulation data + PIE real-world scenarios
+  3.5  Compare against rule-based baseline
+
+Step 4: TDM Integration
+  4.1  Package TDM as a module: Input: TIM output → Output: decision (stop/slow/noop)
+  4.2  Define communication protocol (gRPC or MQTT) between traffic light node and driver app
+  4.3  End-to-end test: camera feed → TIM → network → TDM → alert
+
+------------------------------------------------------------------------------------------------------------------------

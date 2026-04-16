@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Model weights (pretrained + trained)
+*.pt
+*.pth
+*.onnx
+*.engine
+*.torchscript
+
+# Generated media
+*.mp4
+*.avi
+*.mkv
+*.gif
+
+# Logs
+*.log
+logs/
+training_progress.log
+
+# Data directories (too big to commit)
+data/
+checkpoints/
+outputs/
+runs/                            # ultralytics default output dir
+
+# Dataset cache files (generated pickles inside submodules)
+**/data_cache/
+**/__pycache__/
+
+# Machine-specific env
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Legacy: files left from pre-refactor layout (will be removed)
+# Uncomment if you want to keep the old paths tracked:
+# !plan.txt
+# !refactor_plan.txt

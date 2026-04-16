@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat)",
+      "Bash(bash /tmp/fix_symlinks.sh)",
+      "Bash(chmod +x /home/haozhan-tang/ri/embed_traffic/scripts/*.sh)"
+    ]
+  }
+}
