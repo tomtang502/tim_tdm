@@ -20,9 +20,17 @@ from ultralytics import YOLO
 from embed_traffic.paths import detector_weights
 
 # Default detector checkpoint for trajectory estimation. Override by passing
-# model_path to TrajectoryEstimator or by exporting TIM_DETECTOR_RUN.
+# model_path to TrajectoryEstimator.
 DEFAULT_RUN_NAME = "ped_dashcam"
-MODEL_PATH = str(detector_weights(DEFAULT_RUN_NAME))
+
+
+def default_model_path() -> str:
+    """Resolve the default detector checkpoint lazily.
+
+    Resolved on call (not import) so importing this module does not fail when
+    weights haven't been trained yet.
+    """
+    return str(detector_weights(DEFAULT_RUN_NAME))
 
 
 class PedestrianTrajectory:
@@ -157,15 +165,19 @@ class PedestrianTrajectory:
 class TrajectoryEstimator:
     """Runs YOLOv8 + ByteTrack and builds pedestrian trajectories."""
 
-    def __init__(self, model_path=MODEL_PATH, tracker="bytetrack.yaml", fps=30.0):
+    def __init__(self, model_path=None, tracker="bytetrack.yaml", fps=30.0):
+        if model_path is None:
+            model_path = default_model_path()
+        self.model_path = model_path
         self.model = YOLO(model_path)
         self.tracker = tracker
         self.fps = fps
         self.trajectories = {}  # track_id -> PedestrianTrajectory
 
     def reset(self):
-        """Reset tracker state and trajectories."""
-        self.model = YOLO(MODEL_PATH)
+        """Reset tracker state and trajectories (re-loads detector to drop its
+        internal tracker memory)."""
+        self.model = YOLO(self.model_path)
         self.trajectories = {}
 
     def process_frame(self, frame, frame_id):

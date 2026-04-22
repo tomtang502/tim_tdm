@@ -18,7 +18,10 @@ from embed_traffic.data.loader import UnifiedDataLoader
 from embed_traffic.paths import detector_weights
 
 DEFAULT_RUN_NAME = "ped_dashcam"
-MODEL_PATH = str(detector_weights(DEFAULT_RUN_NAME))
+
+
+def default_model_path() -> str:
+    return str(detector_weights(DEFAULT_RUN_NAME))
 
 
 def track_video(model, video_path, start_frame=0, max_frames=None, tracker="botsort.yaml"):
@@ -212,7 +215,7 @@ def evaluate_tracking_on_dataset(model, loader, dataset, samples, tracker, num_v
         t0 = time.time()
 
         # Reset tracker state for new video
-        model_fresh = YOLO(MODEL_PATH)
+        model_fresh = YOLO(default_model_path())
         pred_tracks, fps = track_video(
             model_fresh, video_path, start_frame=start_frame, max_frames=max_frames, tracker=tracker
         )
@@ -289,7 +292,7 @@ def generate_tracking_video(model, video_path, output_path, max_frames=150, trac
 
 
 def main():
-    model = YOLO(MODEL_PATH)
+    model = YOLO(default_model_path())
     loader = UnifiedDataLoader()
 
     # --- Evaluate BoT-SORT on JAAD ---
@@ -329,12 +332,12 @@ def main():
 
     # JAAD sample
     jaad_video = str(loader.jaad_clips_dir / "video_0297.mp4")
-    model_viz = YOLO(MODEL_PATH)
+    model_viz = YOLO(default_model_path())
     generate_tracking_video(model_viz, jaad_video, str(out_dir / "sample_tracking_jaad.mp4"), max_frames=150)
 
     # PIE sample
     pie_video = str(loader.pie_clips_dir / "set01" / "video_0002.mp4")
-    model_viz2 = YOLO(MODEL_PATH)
+    model_viz2 = YOLO(default_model_path())
     generate_tracking_video(model_viz2, pie_video, str(out_dir / "sample_tracking_pie.mp4"), max_frames=150)
 
     loader.release_all()

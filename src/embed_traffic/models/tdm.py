@@ -15,7 +15,7 @@ from typing import Optional
 
 import numpy as np
 
-from embed_traffic.models.tim import PedestrianInfo, TIMOutput
+from embed_traffic.inference import PedestrianInfo, TIMFrameOutput as TIMOutput
 
 
 @dataclass
@@ -198,7 +198,7 @@ def evaluate_on_pie():
     Compare decisions against actual driver behavior.
     """
     from embed_traffic.data.loader import UnifiedDataLoader
-    from embed_traffic.models.tim import TIM
+    from embed_traffic.inference import TIM
     import cv2
     import time
 
@@ -206,8 +206,7 @@ def evaluate_on_pie():
     loader = UnifiedDataLoader()
     pie_test = loader.get_pie_samples(split="test")
 
-    # Use dashcam model for PIE
-    tim = TIM(view="dashcam")
+    tim = TIM()  # dashcam default
     tdm = TDM()
 
     # Pick a video with crossing events
@@ -300,13 +299,13 @@ def evaluate_on_pie():
     return decisions
 
 
-def generate_tdm_demo(video_path, output_path, view="dashcam",
+def generate_tdm_demo(video_path, output_path,
                       vehicle_speed_px_s=100.0, max_frames=200):
     """Generate a demo video with TDM decision overlay."""
-    from embed_traffic.models.tim import TIM
+    from embed_traffic.inference import TIM
     import cv2
 
-    tim = TIM(view=view)
+    tim = TIM()  # dashcam default
     tdm = TDM()
 
     cap = cv2.VideoCapture(video_path)
@@ -400,16 +399,15 @@ def main():
     out_dir = OUTPUTS_DIR / "demos"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print("\n--- Generating TDM demo (dashcam) ---")
+    print("\n--- Generating TDM demo on JAAD ---")
     jaad_video = str(loader.jaad_clips_dir / "video_0297.mp4")
-    generate_tdm_demo(jaad_video, str(out_dir / "demo_tdm_dashcam.mp4"),
-                      view="dashcam", vehicle_speed_px_s=100.0)
+    generate_tdm_demo(jaad_video, str(out_dir / "demo_tdm_jaad.mp4"),
+                      vehicle_speed_px_s=100.0)
 
-    print("\n--- Generating TDM demo (traffic light) ---")
-    # Use an Intersection-Flow image sequence isn't video, so use PIE with traffic light model
+    print("\n--- Generating TDM demo on PIE ---")
     pie_video = str(loader.pie_clips_dir / "set03" / "video_0015.mp4")
-    generate_tdm_demo(pie_video, str(out_dir / "demo_tdm_traffic_light.mp4"),
-                      view="traffic_light", vehicle_speed_px_s=80.0)
+    generate_tdm_demo(pie_video, str(out_dir / "demo_tdm_pie.mp4"),
+                      vehicle_speed_px_s=80.0)
 
     print("\nTDM complete!")
 

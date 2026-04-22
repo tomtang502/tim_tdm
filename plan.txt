@@ -7,7 +7,9 @@ in the corresponding crossroads, driver node will send request to traffic light 
 (1) traffic light compute node (with cam sensor) that use computer vision algorithm to detect pedestrian traffic.
 "Traffic Info Model" (TIM) is used here.
 Input: frame of pictures
-Output: number of pedestrian intended to cross, position of pedestrians, walking speed for each of them, time until next light, next light color (green/red/yellow)
+Output: number of pedestrian intended to cross, position of pedestrians, walking speed for each of them
+(Note: traffic-light state was part of the original design but is NOT emitted by
+ the current TIM — see [VII] below.)
 (2) On driver/bike rider side, they will have an app sending request for information to traffic light compute node, then traffic light will send the infor from (1) to these app on phone.
 (3) app on phone will then determine are they potentially in danger of a hit to the pedestrain and choose to alert driver or not (slow down, stop, no-op).
 "Traffic Decision Model" (TDM) is used here.
@@ -92,8 +94,9 @@ Step 1: Environment & Data Setup
   1.2  Download PIE dataset (videos + annotations)
   1.3  Download JAAD dataset (videos + annotations)
   1.4  Write data loading scripts to parse PIE/JAAD annotations into a unified format
-       (frame_id, ped_id, bbox, crossing_intent, traffic_light_state)
+       (frame_id, ped_id, bbox, crossing_intent)
        Use on-the-fly frame loading from video via OpenCV VideoCapture (no frame extraction)
+       Note: traffic_light_state is parsed from PIE but no longer emitted by TIM (see [VII]).
 
 Step 2: Pedestrian Detection (YOLOv8)
   2.1  Load pretrained YOLOv8 model (yolov8m or yolov8l) from ultralytics
@@ -119,7 +122,8 @@ Step 5: Crossing Intent Classification
 
 Step 6: TIM Integration
   6.1  Combine all components into a single TIM pipeline:
-       Input: video frame → Output: {ped_id, bbox, speed, trajectory, crossing_intent, traffic_light_state}
+       Input: video frame → Output: {ped_id, bbox, speed, trajectory, crossing_intent}
+       (traffic_light_state dropped — see [VII])
   6.2  Run end-to-end on PIE test set, measure latency and accuracy
   6.3  Package as a module with a clean API for the driver node to query
 
@@ -154,5 +158,203 @@ Step 4: TDM Integration
   4.1  Package TDM as a module: Input: TIM output → Output: decision (stop/slow/noop)
   4.2  Define communication protocol (gRPC or MQTT) between traffic light node and driver app
   4.3  End-to-end test: camera feed → TIM → network → TDM → alert
+
+------------------------------------------------------------------------------------------------------------------------
+
+[VII] Plan revision (2026-04-16) — DASHCAM-ONLY DEPLOYMENT
+
+Decision: going forward, TIM is deployed from the DASHCAM viewpoint only.
+Drop the separate fixed-camera / traffic-light-view model and the associated
+Intersection-Flow-5K + MIO-TCD training track.
+
+Rationale:
+  - Dashcam model (PIE + JAAD) produces the metrics the system needs and is
+    trained on exactly the data distribution the vehicle/rider app will see.
+  - Maintaining two view-specific models (dashcam vs fixed intersection) doubles
+    training/eval cost for a deployment context that is dashcam-first.
+  - Intersection-Flow-5K + MIO-TCD were an experiment to serve a separate
+    fixed-camera node; we are not shipping that node in this prototype.
+
+Implications:
+  - Active model:        checkpoints/ped_dashcam/weights/best.pt
+  - Active dataset:      yolo_dataset_dashcam/ (PIE + JAAD)
+  - Archived (kept on disk but no longer trained/updated):
+      * checkpoints/ped_traffic_light/
+      * yolo_dataset_traffic_light/
+      * Intersection-Flow-5K/, MIO-TCD/ (raw sources retained for reproducibility)
+  - TIM wrapper should default to view="dashcam" and drop the traffic_light path
+    from the inference API until a separate deployment target reappears.
+  - TDM continues on PIE (has OBD ego-vehicle speed) — unchanged.
+
+Additional TIM output change: DROP traffic_light_state
+  - Rationale: the active data sources (PIE + JAAD) do not provide reliable,
+    consistent traffic-light-state supervision from the dashcam view. PIE has
+    some traffic_light annotations but they are sparse and not aligned with
+    every frame; JAAD has categorical per-frame traffic_light labels but only
+    a small fraction of clips. Training a robust per-frame traffic-light-state
+    predictor from these would require additional data we don't have.
+  - New TIM output per pedestrian per frame:
+      {ped_id, bbox, center, speed_px_s, avg_speed_px_s, direction,
+       track_length, crossing_intent, crossing_prob, predicted_path}
+    (no traffic_light_state field).
+  - Consumers (TDM) previously using traffic_light_state should fall back to
+    TTC + crossing_intent for decision-making. If/when a dedicated
+    traffic-light data source lands, this is a clean place to add it back.
+
+
+[VIII] Detection model performance log
+
+YOLO26x, 2× RTX 5090, AMP, lr0=0.005 cos→lr0*0.01, 80 epochs max
+(patience-limited), strong augmentation (mosaic 1.0, mixup 0.2, erasing 0.5,
+copy_paste 0.1, ±5° rotation, scale 0.5), eval on held-out test split.
+
+  Dashcam model (PIE + JAAD)
+    Run:           ped_dashcam (2026-04-16, batch=28, imgsz=1280)
+    mAP@0.5:       0.7973
+    mAP@0.5:0.95:  0.5554
+    Precision:     0.8227
+    Recall:        0.7398
+    → Current production checkpoint.
+
+  Traffic-light model (IFlow + MIO-TCD) — ARCHIVED, not shipping
+    Run:           ped_traffic_light (2026-04-16, batch=28, imgsz=1152)
+    mAP@0.5:       0.6730
+    mAP@0.5:0.95:  0.3095
+    Precision:     0.7058
+    Recall:        0.6032
+
+Earlier generations kept for historical comparison:
+  v1 (YOLOv8m, PIE+JAAD, weak aug):          mAP@0.5=0.464
+  v2 (YOLOv8m, PIE+JAAD, strong aug):         mAP@0.5=0.511
+  v3 (YOLOv8m, +IFlow+MIOTCD):                mAP@0.5=0.491
+  dashcam-only (YOLO26x, first attempt):      mAP@0.5=0.459
+  dashcam-only (YOLO26x, current 2026-04-16): mAP@0.5=0.797  ← big jump from
+    larger effective batch (28), 80 epochs, and clean AMP training without
+    the earlier half=True / compile+DDP NaN issues.
+
+------------------------------------------------------------------------------------------------------------------------
+
+[IX] Deployment reframe (2026-04-22) — STREET-SIDE FIXED CAMERA AT JUNCTION
+
+Clarification, not a model change: the deployed TIM camera is NOT on a moving
+vehicle. It is a camera mounted street-side next to a traffic junction, pointed
+down the road with a dashcam-style viewpoint (low-to-mid height, road-parallel
+line of sight). Think "pole-mounted traffic camera with a dashcam's angle,"
+not "drone overhead" and not "car windshield."
+
+Why the dashcam-trained model still applies:
+  The training data (PIE + JAAD) was captured from vehicle-mounted cameras
+  driving through urban streets. The viewpoint distribution (height ~1–1.5 m,
+  pitch ~horizontal, FoV into the road scene) closely matches a pole-mounted
+  street-side camera at the same height / angle. Pedestrians, vehicles, road
+  markings, and intersections appear at very similar scales and orientations
+  in both. So the YOLO26x detector + tracker + Kalman predictor + intent LSTM
+  transfer directly — no re-training needed.
+
+What's different vs. the training domain:
+  1. The camera itself is STATIONARY. There is no ego-motion in the frame;
+     only road users move. This actually makes downstream reasoning easier:
+       - No egomotion compensation needed on trajectories.
+       - Pixel-space speeds correspond to real-world motion of the tracked
+         object, scaled by depth.
+       - PIE's OBD ego-speed is NOT used at inference time (it belonged to
+         the recording vehicle, not our static camera).
+  2. The same camera observes BOTH approaching vehicles AND pedestrians from
+     a shared static reference frame. TDM can compute pedestrian-vs-vehicle
+     TTC from the single TIM output stream, rather than needing a separate
+     ego-vehicle speed source.
+  3. Real-world calibration becomes a one-time site setup task (intrinsics
+     + camera pose vs. ground plane at install) instead of a per-frame
+     inference problem. After calibration, TIM can emit speed_m_s and
+     position_world alongside the existing pixel-space fields.
+
+Implications for the codebase:
+  - TIM API stays unchanged; its outputs remain pixel-space. TDM consumers
+    do not need to change.
+  - Future enhancement (not required for the prototype):
+      * Add optional `CameraCalibration` dataclass (intrinsics K + extrinsics
+        T_camera_ground) at TIM init time.
+      * When provided, add `position_m_ground` and `speed_m_s` to
+        `PedestrianInfo`; otherwise leave them as None.
+      * This is a post-processing layer over the existing pipeline — no model
+        retraining.
+  - Documentation updates: guide/TIM.md should note that "dashcam view" here
+    means the camera VIEWPOINT, not that the camera is necessarily on a car.
+
+------------------------------------------------------------------------------------------------------------------------
+
+[X] Camera calibration (2026-04-22) — MONOCULAR-DEPTH ONE-SHOT CALIBRATION
+
+Extends §IX. TIM now optionally emits real-world pedestrian position and speed
+by projecting bbox foot points through a pre-computed ground-plane homography.
+Calibration is a one-time install task — no runtime depth-model inference.
+
+Install-time pipeline:
+  1. Collect ~8 frames from the deployed camera.
+  2. Run a metric-depth model (default: Depth-Anything-V2-Metric-Outdoor-Large)
+     on each frame to get per-pixel depth in meters.
+  3. Mask out dynamic regions (pedestrians, vehicles) using the same YOLO
+     detector that TIM uses at runtime, so the RANSAC fit sees only static
+     scene geometry.
+  4. Backproject the masked pixels into a 3D point cloud using assumed
+     intrinsics (default: 60° horizontal FoV from image resolution; overridable
+     via --hfov-deg or a full Intrinsics object).
+  5. RANSAC-fit a plane across the combined multi-frame cloud, then LS-refine
+     on the inliers.
+  6. Derive camera height (= plane offset), pitch, roll, and the
+     camera→ground rigid transform.
+  7. Serialize a `CameraCalibration` JSON to
+     `configs/cameras/<camera_id>.json`.
+
+Runtime (every frame, zero ML cost):
+  - Foot point = (bbox center x, bbox bottom y).
+  - Project through K^-1 → camera-frame ray.
+  - Rotate to ground frame, intersect with Y = 0.
+  - The result (X, Z) is real-world position in meters.
+  - Finite-difference across frames → velocity_m_s and speed_m_s.
+
+TIM API additions:
+  TIM(..., camera_calibration: str | Path | CameraCalibration | None = None)
+
+  When calibration is provided, every PedestrianInfo additionally carries:
+    - position_m_ground: [X_m, Z_m]
+    - speed_m_s:          scalar
+    - velocity_m_s:       [vx_m_s, vz_m_s]
+  Otherwise all three remain None (backward-compatible with the earlier schema).
+
+Code layout (new):
+  src/embed_traffic/calibration/
+    __init__.py       exports `calibrate`, `CameraCalibration`, ...
+    schema.py         CameraCalibration + Intrinsics + GroundExtrinsics (+ JSON I/O
+                      and pixel_to_ground homography)
+    depth.py          `DepthEstimator` — HF AutoModelForDepthEstimation wrapper
+    ground_plane.py   point-cloud backprojection, RANSAC plane fit, heuristic
+                      ground mask, extrinsics derivation
+    calibrate.py      end-to-end driver + CLI
+    __main__.py       entry point for `python -m embed_traffic.calibration`
+  scripts/run_calibrate.sh                RUN_NAME / CAMERA_ID / VIDEO / N_FRAMES env vars
+  configs/cameras/<id>.json               (created per deployment)
+
+Dependencies added to pyproject.toml:
+  - transformers>=4.40 (loads DA-V2 / future DA3 via AutoImageProcessor +
+    AutoModelForDepthEstimation)
+  - huggingface_hub>=0.23 (model download)
+
+Expected accuracy:
+  - Camera height: typically within 5–15% of ground truth on outdoor scenes.
+  - Pedestrian speed (m/s): dominated by detector jitter and foot-point
+    localization; noisy at > 20 m Z, usable at 5–15 m Z (which is where TDM
+    cares about TTC anyway).
+
+Re-calibration triggers:
+  - Camera moved or re-pointed.
+  - Lens / zoom changed.
+  - Road geometry changed (re-grading).
+
+Non-goals:
+  - Per-frame depth inference at runtime (defeats the point — the camera is
+    static, geometry doesn't change).
+  - Recovering distortion coefficients (pinhole model is assumed; OK for
+    typical mid-FoV pole cams).
 
 ------------------------------------------------------------------------------------------------------------------------

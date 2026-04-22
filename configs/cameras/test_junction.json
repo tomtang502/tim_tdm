@@ -1,0 +1,50 @@
+{
+  "camera_id": "test_junction",
+  "image_size": [
+    1920,
+    1080
+  ],
+  "intrinsics": {
+    "fx": 1662.7687752661222,
+    "fy": 1662.7687752661222,
+    "cx": 960.0,
+    "cy": 540.0
+  },
+  "extrinsics": {
+    "plane_normal_cam": [
+      -0.007596494849964061,
+      -0.9987547538725408,
+      0.04930755401553714
+    ],
+    "plane_offset_cam": 2.07649943358018,
+    "R_cam_to_ground": [
+      [
+        -0.9999710758944179,
+        0.007605746154089784,
+        0.0
+      ],
+      [
+        -0.007596494849964061,
+        -0.9987547538725408,
+        0.04930755401553714
+      ],
+      [
+        0.0003750207393212459,
+        0.049306127838638796,
+        0.9987836427960787
+      ]
+    ],
+    "t_cam_to_ground": [
+      0.0,
+      2.07649943358018,
+      0.0
+    ],
+    "pitch_deg": -2.8262607503612216,
+    "roll_deg": -179.5647486891732,
+    "camera_height_m": 2.07649943358018
+  },
+  "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+  "source_frames": 4,
+  "created_at": "2026-04-22T22:34:51.981183+00:00",
+  "notes": "Auto-calibrated with 4 frames via depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf. Dynamic objects masked: True. HFOV assumption: 60.0\u00b0 (unless intrinsics overridden)."
+}

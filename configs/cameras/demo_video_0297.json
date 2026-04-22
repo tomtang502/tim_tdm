@@ -1,0 +1,50 @@
+{
+  "camera_id": "demo_video_0297",
+  "image_size": [
+    1920,
+    1080
+  ],
+  "intrinsics": {
+    "fx": 1662.7687752661222,
+    "fy": 1662.7687752661222,
+    "cx": 960.0,
+    "cy": 540.0
+  },
+  "extrinsics": {
+    "plane_normal_cam": [
+      -0.004865462812692141,
+      -0.9986525445535526,
+      0.05166645457483037
+    ],
+    "plane_offset_cam": 2.033726936932319,
+    "R_cam_to_ground": [
+      [
+        0.9999881318845564,
+        -0.004871969831101639,
+        0.0
+      ],
+      [
+        -0.004865462812692141,
+        -0.9986525445535526,
+        0.05166645457483037
+      ],
+      [
+        0.0002517174079685568,
+        0.051665841391382916,
+        0.9986643968179035
+      ]
+    ],
+    "t_cam_to_ground": [
+      0.0,
+      2.033726936932319,
+      0.0
+    ],
+    "pitch_deg": -2.9615884092804023,
+    "roll_deg": -0.2787715932649384,
+    "camera_height_m": 2.033726936932319
+  },
+  "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
+  "source_frames": 8,
+  "created_at": "2026-04-22T23:20:44.576914+00:00",
+  "notes": "Auto-calibrated with 8 frames via depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf. Dynamic objects masked: True. HFOV assumption: 60.0\u00b0 (unless intrinsics overridden)."
+}
