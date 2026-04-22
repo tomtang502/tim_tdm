@@ -22,7 +22,12 @@ from embed_traffic.train.dashcam import prepare_subset
 PREFIXES = ("iflow_", "miotcd_")
 
 
-def main(run_name: str, pretrained: str = "yolo26x.pt", batch: int | None = None) -> None:
+def main(
+    run_name: str,
+    pretrained: str = "yolo26x.pt",
+    batch: int | None = None,
+    workers: int | None = None,
+) -> None:
     print(f"=== Preparing traffic-light dataset (IFlow + MIO-TCD) for run '{run_name}' ===")
     prepare_subset(
         src=YOLO_DATASET_DIR,
@@ -38,6 +43,8 @@ def main(run_name: str, pretrained: str = "yolo26x.pt", batch: int | None = None
     overrides["cache"] = True
     if batch is not None:
         overrides["batch"] = batch
+    if workers is not None:
+        overrides["workers"] = workers
     model.train(
         data=dataset_yaml,
         project=str(CHECKPOINTS_DIR),
@@ -71,8 +78,9 @@ def cli() -> None:
     p.add_argument("--run-name", required=True, help="Checkpoint directory name.")
     p.add_argument("--pretrained", default="yolo26x.pt", help="Pretrained weights.")
     p.add_argument("--batch", type=int, default=None, help="Global batch size (overrides TRAIN_DEFAULTS).")
+    p.add_argument("--workers", type=int, default=None, help="Dataloader workers (overrides TRAIN_DEFAULTS).")
     args = p.parse_args()
-    main(args.run_name, args.pretrained, args.batch)
+    main(args.run_name, args.pretrained, args.batch, args.workers)
 
 
 if __name__ == "__main__":

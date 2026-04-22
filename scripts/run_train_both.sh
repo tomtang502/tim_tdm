@@ -20,9 +20,13 @@ BASE_MODEL="yolo26x"
 BASE_MODEL_DASHCAM="${BASE_MODEL_DASHCAM:-${BASE_MODEL:-}}"
 BASE_MODEL_TL="${BASE_MODEL_TL:-${BASE_MODEL:-}}"
 # Global batch size (total across all GPUs). Leave empty to use TRAIN_DEFAULTS.
-BATCH=32
+BATCH=28
 BATCH_DASHCAM="${BATCH_DASHCAM:-$BATCH}"
 BATCH_TL="${BATCH_TL:-$BATCH}"
+# Dataloader workers. Empty → use TRAIN_DEFAULTS. Respects WORKERS env var from caller.
+WORKERS="${WORKERS:-}"
+WORKERS_DASHCAM="${WORKERS_DASHCAM:-$WORKERS}"
+WORKERS_TL="${WORKERS_TL:-$WORKERS}"
 
 # ── Boilerplate ──
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
@@ -37,15 +41,19 @@ echo "Base model dashcam: ${BASE_MODEL_DASHCAM:-<module default>}" | tee -a "$LO
 echo "Base model TL:      ${BASE_MODEL_TL:-<module default>}"      | tee -a "$LOG"
 echo "Batch dashcam:      ${BATCH_DASHCAM:-<module default>}"      | tee -a "$LOG"
 echo "Batch TL:           ${BATCH_TL:-<module default>}"           | tee -a "$LOG"
+echo "Workers dashcam:    ${WORKERS_DASHCAM:-<module default>}"    | tee -a "$LOG"
+echo "Workers TL:         ${WORKERS_TL:-<module default>}"         | tee -a "$LOG"
 echo "Started: $(date)"                      | tee -a "$LOG"
 
 DASHCAM_ARGS=(--run-name "$RUN_NAME_DASHCAM")
 [ -n "$BASE_MODEL_DASHCAM" ] && DASHCAM_ARGS+=(--pretrained "$BASE_MODEL_DASHCAM")
 [ -n "$BATCH_DASHCAM" ]      && DASHCAM_ARGS+=(--batch "$BATCH_DASHCAM")
+[ -n "$WORKERS_DASHCAM" ]    && DASHCAM_ARGS+=(--workers "$WORKERS_DASHCAM")
 
 TL_ARGS=(--run-name "$RUN_NAME_TL")
 [ -n "$BASE_MODEL_TL" ] && TL_ARGS+=(--pretrained "$BASE_MODEL_TL")
 [ -n "$BATCH_TL" ]      && TL_ARGS+=(--batch "$BATCH_TL")
+[ -n "$WORKERS_TL" ]    && TL_ARGS+=(--workers "$WORKERS_TL")
 
 echo ""                                                       | tee -a "$LOG"
 echo "===== 1. Dashcam Model (PIE + JAAD) =====" | tee -a "$LOG"
