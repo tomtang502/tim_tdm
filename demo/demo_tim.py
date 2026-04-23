@@ -53,9 +53,10 @@ DEMO_OUT_DIR = OUTPUTS_DIR / "demo" / "tim"
 CONFIGS_DIR = REPO_ROOT / "configs" / "cameras"
 
 # All existing candidates are processed (one side-by-side mp4 per video).
+# video_0001 is 20s and essentially stationary (mean frame-to-frame pixel diff
+# ≈ 2.5), matching the pole-mounted street-camera deployment.
 DEFAULT_VIDEO_CANDIDATES = [
-    DATA_DIR / "JAAD_clips" / "video_0297.mp4",   # ~13 s, a few pedestrians
-    DATA_DIR / "JAAD_clips" / "video_0135.mp4",   # ~17 s, crowded intersection
+    DATA_DIR / "JAAD_clips" / "video_0001.mp4",   # ~20 s, static dashcam
 ]
 
 

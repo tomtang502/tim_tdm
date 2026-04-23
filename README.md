@@ -88,6 +88,19 @@ Per video, writes to `outputs/demo/tim/`:
 
 The calibration itself is persisted to `configs/cameras/<camera_id>.json` and reused on subsequent runs. See `guide/TIM.md §8` for how calibration works.
 
+### TDM demo
+
+```bash
+python demo/demo_tdm.py --scenario approach_and_stop
+```
+
+Runs the full TIM → TDM pipeline, simulating a car approaching the camera. Writes to `outputs/demo/tdm/`:
+
+- `<stem>.mp4` — side-by-side (overlay + alert banner | top-down with ego car drawn in)
+- `<stem>.jsonl` — combined `{"tim": {...}, "tdm": {...}}` per frame
+
+Scenarios: `approaching`, `approaching_fast`, `approach_and_stop`, `stationary`, `constant_velocity`. See `guide/TDM.md`.
+
 ---
 
 ## Repository layout
@@ -134,6 +147,11 @@ embed_traffic/
 │   │   ├── depth.py               # Depth-Anything-V2 wrapper
 │   │   ├── ground_plane.py        # RANSAC plane fit, extrinsics derivation
 │   │   └── calibrate.py           # end-to-end driver + CLI
+│   ├── tdm/                       # ← canonical TDM decision API
+│   │   ├── tdm.py                 # TDM class (trajectory-based classifier)
+│   │   ├── schema.py              # CarState, AlertLevel, TDMOutput
+│   │   ├── simulator.py           # synthetic car trajectories (no real data yet)
+│   │   └── demo.py                # alert banner + top-down with car marker
 │   ├── eval/
 │   │   └── yolo_zeroshot.py       # COCO-pretrained YOLO baseline
 │   └── utils/
@@ -179,10 +197,14 @@ embed_traffic/
 │
 └── outputs/                        # demo + inference artifacts (GITIGNORED)
     └── demo/
-        └── tim/                    # demo_tim.py artifacts
-            ├── <stem>.mp4          # side-by-side (overlay | top-down)
-            ├── <stem>.jsonl        # per-frame TIM records
-            └── <stem>_calibration/ # 8 depth panels
+        ├── tim/                    # demo_tim.py artifacts
+        │   ├── <stem>.mp4          # side-by-side (overlay | top-down)
+        │   ├── <stem>.jsonl        # per-frame TIM records
+        │   └── <stem>_calibration/ # 8 depth panels
+        └── tdm/                    # demo_tdm.py artifacts
+            ├── <stem>.mp4          # side-by-side (overlay+banner | top-down+car)
+            ├── <stem>.jsonl        # per-frame {"tim": ..., "tdm": ...}
+            └── <stem>_calibration/
 ```
 
 ---
@@ -247,17 +269,19 @@ for frame_id in range(num_frames):
               ped.speed_px_s, ped.speed_m_s, ped.position_m_ground)
 ```
 
-TDM (rule-based TTC baseline) consumes `TIMFrameOutput`:
+TDM (simple trajectory collision model) consumes `TIMFrameOutput` plus an ego `CarState`:
 
 ```python
-from embed_traffic.models.tdm import TDM
+from embed_traffic.tdm import TDM, CarState
+from embed_traffic.tdm.simulator import make_scenario
 
-tdm = TDM()
-decision = tdm.decide(tim_out, vehicle_speed_px_s=...)
-# decision.decision -> "STOP" | "SLOW_DOWN" | "NO_OP"
+tdm = TDM()                                  # default thresholds
+car = make_scenario("approaching")(0.0)       # synthetic car at t=0
+out = tdm.decide(tim_out, car)
+# out.alert -> NONE | CAUTION | SLOW_DOWN | BRAKE
 ```
 
-See **[guide/TIM.md](guide/TIM.md)** for full usage, CLI, and schema documentation.
+See **[guide/TIM.md](guide/TIM.md)** and **[guide/TDM.md](guide/TDM.md)** for full API, CLI, and schema documentation.
 
 ---
 

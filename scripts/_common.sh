@@ -38,6 +38,6 @@ if [ -n "$PY_BIN" ]; then
 fi
 
 # Ensure standard output directories exist
-mkdir -p "$REPO_ROOT/logs" "$REPO_ROOT/checkpoints" "$REPO_ROOT/outputs/demos" "$REPO_ROOT/outputs/samples"
+mkdir -p "$REPO_ROOT/logs" "$REPO_ROOT/checkpoints" "$REPO_ROOT/outputs/demo" "$REPO_ROOT/outputs/samples"
 
 cd "$REPO_ROOT"

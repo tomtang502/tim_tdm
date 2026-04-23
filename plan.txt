@@ -358,3 +358,59 @@ Non-goals:
     typical mid-FoV pole cams).
 
 ------------------------------------------------------------------------------------------------------------------------
+
+[XI] TDM (2026-04-22) — SIMPLE TRAJECTORY-BASED COLLISION REASONING
+
+The Traffic Decision Model runs on the driver / cyclist app and decides
+whether to alert the driver about a pedestrian ahead. It is DELIBERATELY
+simple: constant-velocity pedestrian + constant-acceleration car, evaluated
+on a discrete time grid up to an 8 s horizon.
+
+Inputs (per frame):
+  1. `TIMFrameOutput` from the camera node. Requires a CALIBRATED TIM so that
+     each pedestrian has world-space `position_m_ground` and `velocity_m_s`.
+     Pedestrians without world-space fields are skipped.
+  2. `CarState`: ego-vehicle `position_m` (X, Z), `velocity_m_s`, and
+     `acceleration_m_s2`, all in the SAME ground frame as the TIM output.
+     We do not have real car telemetry in this prototype — the demo uses a
+     `simulator.py` that generates reasonable kinematic patterns
+     ("approaching", "approach_and_stop", "stationary", etc.).
+
+Output:
+  `TDMOutput` containing an `AlertLevel` ∈ {NONE, CAUTION, SLOW_DOWN, BRAKE}
+  plus the closest-approach (TTC + min-distance) that drove the decision,
+  per-pedestrian collision predictions, and the input `CarState` echoed back
+  for downstream logging / demo rendering.
+
+Classification (ranked, most severe wins across all pedestrians):
+  BRAKE     ← min_dist ≤ r_brake (1.5 m)   AND ttc ≤ ttc_brake (2.0 s)
+  SLOW_DOWN ← min_dist ≤ r_slow  (2.5 m)   AND ttc ≤ ttc_slow  (4.0 s)
+  CAUTION   ← min_dist ≤ r_caution (5.0 m) AND ttc ≤ ttc_caution (6.0 s)
+  NONE      ← otherwise (or no trajectories to reason about)
+
+Refinements:
+  - Pedestrians with `crossing_intent == "crossing"` get a shrunk effective
+    distance (∝ crossing_prob) so they step up one severity tier sooner.
+  - Short tracks (`track_length < 3`) are ignored because their Kalman-derived
+    velocity is unreliable.
+
+Code layout (new):
+  src/embed_traffic/tdm/
+    __init__.py       exports `TDM`, `CarState`, `AlertLevel`, `TDMOutput`, ...
+    schema.py         dataclasses + `AlertLevel` enum + JSON I/O
+    tdm.py            `TDM` class + closest-approach discretizer + classifier
+    simulator.py      `ApproachingCar` / `ApproachAndStop` / ... + registry
+    demo.py           alert banner + top-down renderer with car marker
+  demo/demo_tdm.py    end-to-end demo (calibrate → TIM → simulate car → TDM)
+
+Non-goals (future work):
+  - Real car telemetry fusion (no data yet).
+  - Pedestrian acceleration modeling (Kalman already smooths, so constant
+    velocity over an 8 s horizon is adequate).
+  - Non-point collision volumes (car and ped are treated as points; a single
+    scalar safety radius absorbs combined extent).
+  - Multi-car reasoning (TDM is single ego-vehicle).
+  - Learned decision model (`plan.txt §II.2` mentioned gated deltanet-2 as a
+    long-term option; deferred until we have labeled driving data).
+
+------------------------------------------------------------------------------------------------------------------------

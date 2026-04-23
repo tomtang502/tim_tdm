@@ -45,6 +45,6 @@
   },
   "depth_model": "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf",
   "source_frames": 8,
-  "created_at": "2026-04-22T23:21:00.689458+00:00",
+  "created_at": "2026-04-23T00:34:34.875304+00:00",
   "notes": "Auto-calibrated with 8 frames via depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf. Dynamic objects masked: True. HFOV assumption: 60.0\u00b0 (unless intrinsics overridden)."
 }
