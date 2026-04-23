@@ -20,6 +20,12 @@ from embed_traffic.tdm.schema import (
     CollisionPrediction,
     TDMOutput,
 )
+from embed_traffic.tdm.simulator import (
+    SCENARIOS,
+    Spawn,
+    make_scenario,
+    spawn_schedule,
+)
 from embed_traffic.tdm.tdm import TDM
 
 __all__ = [
@@ -28,4 +34,8 @@ __all__ = [
     "CarState",
     "CollisionPrediction",
     "TDMOutput",
+    "SCENARIOS",
+    "Spawn",
+    "make_scenario",
+    "spawn_schedule",
 ]

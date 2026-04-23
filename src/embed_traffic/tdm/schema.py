@@ -56,11 +56,15 @@ class CarState:
     velocity_z < 0 (closing distance).
 
     All fields are in SI units (meters, m/s, m/s²).
+
+    `car_id` is optional but strongly recommended in multi-car deployments so
+    TDM outputs can be matched back to a specific driver/app.
     """
 
     position_m: Tuple[float, float]         # (X, Z)
     velocity_m_s: Tuple[float, float]       # (vx, vz)
     acceleration_m_s2: Tuple[float, float]  # (ax, az)
+    car_id: Optional[str] = None
 
     @property
     def speed_m_s(self) -> float:
@@ -101,7 +105,7 @@ class CollisionPrediction:
 
 @dataclass
 class TDMOutput:
-    """Result of one TDM decision step."""
+    """Result of one TDM decision step for ONE car."""
 
     frame_id: int
     frame_time_s: float
@@ -117,6 +121,8 @@ class TDMOutput:
 
     # Echoed inputs (useful for the demo overlay / debugging)
     car_state: Optional[CarState] = None
+    # Mirrors car_state.car_id for convenience; set by TDM.decide().
+    car_id: Optional[str] = None
 
     # ── Serialization ──
     def to_json(self) -> str:

@@ -36,18 +36,28 @@ from embed_traffic.calibration.depth import DEFAULT_DEPTH_MODEL
 from embed_traffic.inference import TIM, TIMFrameOutput
 from embed_traffic.inference.demo import overlay_frame
 from embed_traffic.paths import DATA_DIR, OUTPUTS_DIR, REPO_ROOT
-from embed_traffic.tdm import TDM, AlertLevel, CarState, TDMOutput
-from embed_traffic.tdm.demo import draw_alert_banner, render_topdown_frame_with_car
-from embed_traffic.tdm.simulator import SCENARIOS, make_scenario
+from embed_traffic.tdm import (
+    TDM,
+    AlertLevel,
+    CarState,
+    TDMOutput,
+    SCENARIOS,
+    spawn_schedule,
+)
+from embed_traffic.tdm.demo import (
+    CarColorAllocator,
+    draw_alert_banner_multi,
+    render_topdown_frame_with_cars,
+)
 
 DEMO_OUT_DIR = OUTPUTS_DIR / "demo" / "tdm"
 CONFIGS_DIR = REPO_ROOT / "configs" / "cameras"
 
-# JAAD video_0001 is 20s long and the dashcam is essentially stationary
-# (mean frame-to-frame pixel diff ≈ 2.5), making it a great stand-in for a
-# pole-mounted street camera watching an intersection.
+# JAAD video_0313 is 20s long, fairly static (mean frame-to-frame pixel diff
+# ≈ 9.8), and features active pedestrian crossing behaviour — ideal for
+# exercising the TDM alert logic. Chosen over the previous video_0001 default.
 DEFAULT_VIDEO_CANDIDATES = [
-    DATA_DIR / "JAAD_clips" / "video_0001.mp4",
+    DATA_DIR / "JAAD_clips" / "video_0313.mp4",
 ]
 
 
@@ -128,23 +138,46 @@ def do_calibrate(video: Path, n_frames: int, camera_id: str,
 def do_inference(
     video: Path,
     calib,
-    scenario_name: str,
+    scenario_names: list[str],
     jsonl_out: Path,
     mp4_out: Path,
     hfov_deg: float,
-) -> list[tuple[TIMFrameOutput, TDMOutput]]:
-    print(f"\n[2/3] Running TIM + TDM on {video.name}  (scenario='{scenario_name}')")
+    spawn_period_s: float,
+    spawn_end_buffer_s: float,
+) -> list[tuple[TIMFrameOutput, list[TDMOutput]]]:
+    """Run TIM + TDM on `video` with a rotating car-spawn schedule.
+
+    Instead of spawning all cars at t=0, one new car is spawned every
+    `spawn_period_s` seconds (until `duration - spawn_end_buffer_s`),
+    cycling through `scenario_names`. At each frame we query every spawn
+    for its current state; cars that have entered the scene but left
+    (past the camera / out of viewport) drop out automatically.
+    """
+    print(f"\n[2/3] Running TIM + TDM on {video.name}  "
+          f"(scenarios={scenario_names!r})")
     cap = cv2.VideoCapture(str(video))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
-    print(f"  video: {w}x{h} @ {fps:.1f}fps  ({total} frames)")
+    duration_s = total / fps
+    print(f"  video: {w}x{h} @ {fps:.1f}fps  ({total} frames, {duration_s:.2f}s)")
 
     tim = TIM(camera_calibration=calib)
     tdm = TDM(require_world_space=False)   # skip peds without world coords
-    car_source = make_scenario(scenario_name)
+
+    # Build the full spawn schedule up front
+    spawns = spawn_schedule(
+        scenarios=scenario_names,
+        duration_s=duration_s,
+        period_s=spawn_period_s,
+        end_buffer_s=spawn_end_buffer_s,
+    )
+    print(f"  spawn schedule ({len(spawns)} cars, every {spawn_period_s:.0f}s, "
+          f"end buffer {spawn_end_buffer_s:.0f}s):")
+    for s in spawns:
+        print(f"    t={s.spawn_t_s:5.1f}s  {s.car_id:25s}  ({s.scenario_name})")
 
     # Side-by-side layout — same dims as demo_tim.py for visual parity
     topdown_h = h
@@ -159,27 +192,43 @@ def do_inference(
     writer = cv2.VideoWriter(str(mp4_out), fourcc, fps, (combined_w, combined_h))
 
     td_histories: dict[int, list[tuple[float, float]]] = defaultdict(list)
-    car_history: list[tuple[float, float]] = []
+    # Histories keyed by car_id so a car keeps its trail across its lifetime
+    car_histories_by_id: dict[str, list[tuple[float, float]]] = {}
+    color_allocator = CarColorAllocator()
 
-    joint: list[tuple[TIMFrameOutput, TDMOutput]] = []
+    joint: list[tuple[TIMFrameOutput, list[TDMOutput]]] = []
     jsonl_out.parent.mkdir(parents=True, exist_ok=True)
     jsonl_fh = jsonl_out.open("w")
 
     def cb(frame: np.ndarray, tim_out: TIMFrameOutput) -> None:
-        car = car_source(tim_out.frame_time_s)
-        tdm_out = tdm.decide(tim_out, car)
-        joint.append((tim_out, tdm_out))
+        # Gather all currently-active cars from the spawn schedule
+        cars: list[CarState] = []
+        for spawn in spawns:
+            state = spawn.state_at(tim_out.frame_time_s)
+            if state is not None:
+                cars.append(state)
+
+        tdm_outs = tdm.decide_many(tim_out, cars) if cars else []
+
+        # Build per-car history list in the same order as tdm_outs
+        history_list: list[list[tuple[float, float]]] = []
+        for out in tdm_outs:
+            car_histories_by_id.setdefault(out.car_id, [])
+            history_list.append(car_histories_by_id[out.car_id])
+
+        joint.append((tim_out, tdm_outs))
         jsonl_fh.write(json.dumps({
             "tim": asdict(tim_out),
-            "tdm": {**asdict(tdm_out), "alert": tdm_out.alert.value},
+            "tdm": [{**asdict(o), "alert": o.alert.value} for o in tdm_outs],
         }) + "\n")
 
         overlay = overlay_frame(frame, tim_out, tim)
-        draw_alert_banner(overlay, tdm_out)
-        topdown = render_topdown_frame_with_car(
-            tim_out, tdm_out, td_histories,
+        draw_alert_banner_multi(overlay, tdm_outs, color_allocator=color_allocator)
+        topdown = render_topdown_frame_with_cars(
+            tim_out, tdm_outs, td_histories,
+            car_histories=history_list,
             canvas_size=td_canvas, hfov_deg=hfov_deg,
-            car_history=car_history,
+            color_allocator=color_allocator,
         )
         writer.write(np.hstack([overlay, topdown]))
 
@@ -194,24 +243,35 @@ def do_inference(
     return joint
 
 
-def summarize(joint: list[tuple[TIMFrameOutput, TDMOutput]]) -> None:
+def summarize(joint: list[tuple[TIMFrameOutput, list[TDMOutput]]]) -> None:
     print("\n[3/3] Summary")
     if not joint:
         print("  (no frames)")
         return
+
     tim_lats = np.array([t.processing_time_ms for t, _ in joint])
-    counts: dict[str, int] = defaultdict(int)
-    for _, d in joint:
-        counts[d.alert.value] += 1
     total = len(joint)
     dur = joint[-1][0].frame_time_s
-    print(f"  frames:   {total}  (0.0–{dur:.2f}s video time)")
+    n_cars = len(joint[0][1]) if joint and joint[0][1] else 0
+
+    print(f"  frames:   {total}  (0.0–{dur:.2f}s video time)  cars={n_cars}")
     print(f"  TIM lat:  mean={tim_lats.mean():.1f}ms  p95={np.percentile(tim_lats, 95):.1f}ms")
-    print("  TDM alerts:")
-    for lvl in ("none", "caution", "slow_down", "brake"):
-        n = counts.get(lvl, 0)
-        pct = 100.0 * n / total
-        print(f"    {lvl:10s}: {n:4d}  ({pct:5.1f}%)")
+
+    # Per-car alert breakdown
+    for car_idx in range(n_cars):
+        counts: dict[str, int] = defaultdict(int)
+        car_id = None
+        for _, outs in joint:
+            out = outs[car_idx]
+            counts[out.alert.value] += 1
+            if car_id is None:
+                car_id = out.car_id
+        label = car_id or f"car_{car_idx + 1}"
+        print(f"  TDM alerts for {label}:")
+        for lvl in ("none", "caution", "slow_down", "brake"):
+            n = counts.get(lvl, 0)
+            pct = 100.0 * n / total
+            print(f"    {lvl:10s}: {n:4d}  ({pct:5.1f}%)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -227,7 +287,7 @@ def run_one(video: Path, args: argparse.Namespace, idx: int, total: int) -> None
     print(f"Video:      {video}")
     print(f"Camera id:  {camera_id}")
     print(f"Output dir: {DEMO_OUT_DIR}")
-    print(f"Scenario:   {args.scenario}")
+    print(f"Scenarios:  {args.scenarios}")
 
     calib = do_calibrate(
         video, args.n_cal_frames, camera_id,
@@ -236,7 +296,11 @@ def run_one(video: Path, args: argparse.Namespace, idx: int, total: int) -> None
 
     jsonl_out = DEMO_OUT_DIR / f"{stem}.jsonl"
     mp4_out = DEMO_OUT_DIR / f"{stem}.mp4"
-    joint = do_inference(video, calib, args.scenario, jsonl_out, mp4_out, args.hfov_deg)
+    joint = do_inference(
+        video, calib, args.scenarios, jsonl_out, mp4_out, args.hfov_deg,
+        spawn_period_s=args.spawn_period_s,
+        spawn_end_buffer_s=args.spawn_end_buffer_s,
+    )
 
     summarize(joint)
 
@@ -247,18 +311,33 @@ def run_one(video: Path, args: argparse.Namespace, idx: int, total: int) -> None
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="TDM flow demo.")
+    p = argparse.ArgumentParser(description="TDM flow demo (multi-car capable).")
     p.add_argument("--video", type=Path, default=None, action="append",
                    help="Input video (repeatable). Defaults to bundled samples.")
-    p.add_argument("--scenario", type=str, default="approaching",
-                   choices=sorted(SCENARIOS.keys()),
-                   help="Synthetic car-state scenario to simulate.")
+    p.add_argument(
+        "--scenario", dest="scenarios", type=str, action="append", default=None,
+        choices=sorted(SCENARIOS.keys()),
+        help="Car scenario to simulate. Pass multiple times for multi-car "
+             "(each becomes its own CarState with car_id=<scenario>). "
+             "Default if none given: approaching + side_approach (2 cars).",
+    )
     p.add_argument("--n-cal-frames", type=int, default=8)
     p.add_argument("--camera-id", type=str, default=None,
                    help="Only honored with a single --video.")
     p.add_argument("--depth-model", type=str, default=DEFAULT_DEPTH_MODEL)
     p.add_argument("--hfov-deg", type=float, default=60.0)
+    p.add_argument("--spawn-period-s", type=float, default=5.0,
+                   help="Interval between car spawns (default: 5 s).")
+    p.add_argument("--spawn-end-buffer-s", type=float, default=5.0,
+                   help="Do not spawn within this many seconds of the end of "
+                        "the video (default: 5 s).")
     args = p.parse_args()
+
+    # Default scenario rotation. Every `spawn_period_s` seconds a new car is
+    # spawned using the next scenario; the same scenario can appear multiple
+    # times in the list (each spawn gets a unique car_id suffix).
+    if not args.scenarios:
+        args.scenarios = ["approaching", "side_approach", "diagonal_approach"]
 
     videos = args.video if args.video else pick_default_videos()
     if args.camera_id and len(videos) > 1:

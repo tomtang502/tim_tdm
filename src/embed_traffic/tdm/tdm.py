@@ -193,6 +193,7 @@ class TDM:
                 min_distance_m=worst.min_distance_m,
                 per_ped_predictions=preds,
                 car_state=car,
+                car_id=car.car_id,
             )
 
         return TDMOutput(
@@ -202,7 +203,21 @@ class TDM:
             reason="No pedestrians with usable trajectories",
             per_ped_predictions=preds,
             car_state=car,
+            car_id=car.car_id,
         )
+
+    def decide_many(
+        self,
+        tim_out: TIMFrameOutput,
+        cars: list[CarState],
+    ) -> list[TDMOutput]:
+        """Run `decide` for each car in `cars`, independently.
+
+        Every car gets its own TDMOutput. Each call is stateless so the
+        outputs can be processed in any order. Returned list preserves input
+        ordering.
+        """
+        return [self.decide(tim_out, car) for car in cars]
 
     # ─────────────────────────────────────────────────────────────────
     # Helpers
